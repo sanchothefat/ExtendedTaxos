@@ -85,6 +85,8 @@ class Extended_Taxonomy {
 		'query_var'         => true,
 		'exclusive'         => false, # Custom arg
 		'allow_hierarchy'   => false, # Custom arg
+		'editable' 			=> true,  # Custom arg
+		'terms' 			=> false  # Custom arg
 	);
 
 	/**
@@ -190,6 +192,12 @@ class Extended_Taxonomy {
 			$this->defaults['show_ui']           = $args['public'];
 		}
 
+		# If taxonomy is not editable don't show the admin menu section
+		if ( isset( $args['editable'] ) ) {
+			$this->defaults['editable'] = $args['editable'];
+			$this->defaults['show_ui']  = $args['editable'];
+		}
+
 		# Only set rewrites if we need them
 		if ( ( isset( $args['public'] ) and !$args['public'] ) or ( !$this->defaults['public'] ) ) {
 			$this->defaults['rewrite'] = false;
@@ -232,8 +240,54 @@ class Extended_Taxonomy {
 			trigger_error( sprintf( __( 'Taxonomy query var "%s" clashes with a post type query var of the same name', 'ext_taxos' ), $query_var ), E_USER_ERROR );
 		else if ( in_array( $query_var, array( 'type', 'tab' ) ) )
 			trigger_error( sprintf( __( 'Taxonomy query var "%s" is not allowed', 'ext_taxos' ), $query_var ), E_USER_ERROR );
-		else
+		else {
 			register_taxonomy( $this->taxonomy, $this->object_type, $this->args );
+			if ( $this->args['terms'] )
+				$this->add_default_terms();
+		}
+
+	}
+
+	/**
+	 * Adds default terms to taxonomy
+	 *
+	 * @return null
+	 */
+	function add_default_terms() {
+
+		if ( is_array( $this->args['terms'] ) && ! empty( $this->args['terms'] ) ) {
+
+			$terms_cache = get_option( 'tax_terms_' . $this->taxonomy );
+
+			if ( false === $terms_cache || $terms_cache !== $this->args['terms'] ) {
+
+				# Remove existing terms if taxonomy is not editable
+				if ( ! $this->args['editable'] ) {
+					foreach( get_terms( $this->taxonomy ) as $old_term ) {
+						wp_delete_term( $old_term->term_id, $this->taxonomy );
+					}
+				}
+
+				# Add missing terms
+				$new_terms = array();
+
+				foreach( $this->args['terms'] as $term ) {
+					if ( ! term_exists( $term, $this->taxonomy ) ) {
+						$new_term = wp_insert_term( $term, $this->taxonomy );
+						if ( ! is_wp_error( $new_term ) )
+							$new_terms[] = $term;
+					}
+				}
+
+				# Cache the added terms so they're autoloaded next time
+				if ( $terms_cache )
+					update_option( 'tax_terms_' . $this->taxonomy, $new_terms );
+				else
+					add_option( 'tax_terms_' . $this->taxonomy, $new_terms );
+
+			}
+
+		}
 
 	}
 
@@ -435,7 +489,7 @@ class Extended_Taxonomy_Admin {
 		<div id="taxonomy-<?php echo $taxonomy; ?>" class="categorydiv">
 
 			<?php
-			
+
 			switch ( $type ) {
 
 				case 'dropdown':
@@ -521,7 +575,7 @@ class Extended_Taxonomy_Admin {
 
 		</div>
 		<?php
-	
+
 	}
 
 	/**
